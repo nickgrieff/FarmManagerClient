@@ -1,4 +1,16 @@
 
+//  Controller config
+//  Left to Right - with the USB on the RHS
+//  1 - 
+//  2 - 
+//  3 - Solenoid -ve
+//  4 - Solenoid +ve
+//  5 - Pump -ve
+//  6 - Pump +ve
+//  7 - Fans  -ve
+//  8 - Fans  +ve
+//
+//
 
 
 
@@ -42,7 +54,7 @@ void setup() {
   //D5 is the High Pressure pump (12v) pin
   pinMode(D5, OUTPUT);
 
-  //D7 is the lights (12v) - no diode protection
+  //D8 is the lights (12v) - no diode protection
   pinMode(D8, OUTPUT);
 
   Serial.printf("Connecting to %s ", ssid);
@@ -70,12 +82,12 @@ void loop() {
   Serial.print("RSSI:");
   Serial.println(rssi);
 
-  Serial.println("Version Date: 2020-04-16");
+  Serial.println("Version Date: 2020-04-19");
   PostMoistureData();
   PostTemperatureAndHumidityData();
   PostLightData();
   //PostSensorPowerData();
-  //PostFarmBatteryPowerData();
+  PostFarmBatteryPowerData();
   
   delay(2000);
   int pollingInterval = GetPollingInterval() * 1000;
@@ -90,7 +102,7 @@ void loop() {
 
   
   Serial.println("Waiting " + String(pollingInterval/60000) + " minutes before calling again..");
-  //delay(pollingInterval);
+  delay(pollingInterval);
 }
 
 void PostTemperatureAndHumidityData()
@@ -516,14 +528,14 @@ void ProcessTask(JsonObject& task)
 
   const int SOLENOID = 0;
   const int HP_PUMP = 1;
-  const int GRO_LIGHTS_ON = 2;
-  const int GRO_LIGHTS_OFF = 3;
+  const int PUMP_ON = 2;
+  const int PUMP_OFF = 3;
   const int FANS_ON = 4;
   const int FANS_OFF = 5;
  
   int durationSeconds = duration.toInt();
   Serial.println("Duration is: " + String(duration));
-
+  Serial.println("Task type is:" + String(taskType));
   switch(taskType.toInt())
   {
     case SOLENOID:
@@ -535,20 +547,21 @@ void ProcessTask(JsonObject& task)
 //      digitalWrite(D5, HIGH);
 //      break;
 
-    case GRO_LIGHTS_ON:
-      digitalWrite(D5, HIGH);
-      break;
-
-    case GRO_LIGHTS_OFF: 
-      digitalWrite(D5, LOW);
-      break;
-
-    case FANS_ON:
+    case PUMP_ON:
       digitalWrite(D8, HIGH);
       break;
 
-    case FANS_OFF:
+    case PUMP_OFF: 
       digitalWrite(D8, LOW);
+      break;
+
+    case FANS_ON:
+      Serial.println("Setting D8 high...");
+      digitalWrite(D5, HIGH);
+      break;
+
+    case FANS_OFF:
+      digitalWrite(D5, LOW);
       break;
   }
   if (durationSeconds != 0)
@@ -559,6 +572,10 @@ void ProcessTask(JsonObject& task)
     {
       case SOLENOID:
         digitalWrite(D2, LOW);
+        break;
+
+      case PUMP_ON:
+        digitalWrite(D5, LOW);
         break;
 
       case FANS_ON:
