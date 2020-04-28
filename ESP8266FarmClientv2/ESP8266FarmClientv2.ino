@@ -5,10 +5,10 @@
 //  2 - 
 //  3 - Solenoid -ve
 //  4 - Solenoid +ve
-//  5 - Pump -ve
-//  6 - Pump +ve
-//  7 - Fans  -ve
-//  8 - Fans  +ve
+//  5 - Fans -ve
+//  6 - Fans +ve
+//  7 - Pump  -ve
+//  8 - Pump  +ve
 //
 //
 
@@ -31,7 +31,7 @@ int sensorPin = A0;
 int pinDHT11 = 0;
 SimpleDHT11 dht11(pinDHT11);
 
-const char* ssid = "GRIEFF_2GEXT";
+const char* ssid = "GRIEFF2";
 const char* password = "Archangel";
  WiFiClient client;
 
@@ -83,11 +83,11 @@ void loop() {
   Serial.println(rssi);
 
   Serial.println("Version Date: 2020-04-19");
-  PostMoistureData();
-  PostTemperatureAndHumidityData();
-  PostLightData();
+    PostMoistureData();
+    PostTemperatureAndHumidityData();
+    PostLightData();
   //PostSensorPowerData();
-  PostFarmBatteryPowerData();
+  //PostFarmBatteryPowerData();
   
   delay(2000);
   int pollingInterval = GetPollingInterval() * 1000;
@@ -114,7 +114,7 @@ void PostTemperatureAndHumidityData()
         String HUMIDITY = String("CBD9A0A7-5347-4583-B5FA-054BA8E9D448");
         byte temperature = 0;
         byte humidity = 0;
-        
+        delay(2000);
         int err = SimpleDHTErrSuccess;
         if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
           Serial.print("Read DHT11 failed, err="); Serial.println(err);delay(1000);
@@ -126,7 +126,7 @@ void PostTemperatureAndHumidityData()
         Serial.print((int)humidity); Serial.println(" H");
   
 //        digitalWrite(D0,0 );
-//        digitalWrite(D1,1);
+//        digitalWrite(D1,0);
 //        delay(2000);
 //        int currentTemperature = analogRead(sensorPin);
 //        const int TEMP_OFFSET = 175;
@@ -145,6 +145,7 @@ void PostMoistureData()
     Serial.println("---------------------------------------------------");
    Serial.println("Into PostMoistureData");
    String MOISTURE =  String("72CFAC9D-B72A-4683-99C2-6FABA4A8A650");
+   delay(2000);
    digitalWrite(D0, 0);
    digitalWrite(D1,0);
    delay(2000);
@@ -575,11 +576,11 @@ void ProcessTask(JsonObject& task)
         break;
 
       case PUMP_ON:
-        digitalWrite(D5, LOW);
+        digitalWrite(D8, LOW);
         break;
 
       case FANS_ON:
-        digitalWrite(D8, LOW);
+        digitalWrite(D5, LOW);
         break;
     }
   }
