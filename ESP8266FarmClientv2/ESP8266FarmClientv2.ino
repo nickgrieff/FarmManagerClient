@@ -22,7 +22,9 @@
 #include <ESP8266HTTPClient.h>
 ESP8266WiFiMulti WiFiMulti;
 
-
+//Standard retry intervals..
+int retry=1;
+int maxRetry = 50;
 
 //A0 is the only analog pin on the ESP8266
 int sensorPin = A0;
@@ -33,7 +35,7 @@ SimpleDHT11 dht11(pinDHT11);
 
 const char* ssid = "GRIEFF2";
 const char* password = "Archangel";
- WiFiClient client;
+WiFiClient client;
 
 
 void setup() {
@@ -59,18 +61,21 @@ void setup() {
 
   Serial.printf("Connecting to %s ", ssid);
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
+  retry = 1;
+  while (WiFi.status() != WL_CONNECTED && retry<maxRetry)
   {
     delay(500);
-    Serial.print(".");
+    Serial.println("Connection attempt " + String(retry) + " of " + String(maxRetry) );
+    retry++;
   }
-  Serial.println(" connected");
-  
-//  Serial.println("Initialising WIFI");
-//  WiFi.mode(WIFI_STA);
-// 
-//  WiFiMulti.addAP("GRIEFF_2GEXT","Archangel");
+  Serial.println("Connected !!");
+  WriteLog("INFO", "ESP8266 is in startup");
+  long rssi = WiFi.RSSI();
+  Serial.print("RSSI:");
+  Serial.println(rssi);
 }
+
+
 
 void loop() {
 
@@ -78,9 +83,7 @@ void loop() {
   Serial.println("");
   Serial.println("======================================================================================");
   Serial.println("");
-  long rssi = WiFi.RSSI();
-  Serial.print("RSSI:");
-  Serial.println(rssi);
+ 
 
   Serial.println("Version Date: 2020-04-19");
     PostMoistureData();
@@ -100,8 +103,9 @@ void loop() {
   delay(2000);
   GetTasks();
 
-  
+  //ESP.restart();
   Serial.println("Waiting " + String(pollingInterval/60000) + " minutes before calling again..");
+  WriteLog("WAIT", "Waiting " + String(pollingInterval/60000) + " minutes before calling again..");
   delay(pollingInterval);
 }
 
@@ -124,12 +128,6 @@ void PostTemperatureAndHumidityData()
         Serial.print("Sample OK: ");
         Serial.print((int)temperature); Serial.print(" *C, "); 
         Serial.print((int)humidity); Serial.println(" H");
-  
-//        digitalWrite(D0,0 );
-//        digitalWrite(D1,0);
-//        delay(2000);
-//        int currentTemperature = analogRead(sensorPin);
-//        const int TEMP_OFFSET = 175;
         Serial.println("currentTemperature:" + String(temperature));
         PostData(TEMPERATURE, (int)temperature);
         Serial.println("currentHumidity:" + String(humidity));
@@ -214,27 +212,21 @@ int GetPollingInterval()
   Serial.println("Into GetPollingInterval");
   const char* host="griefffarmmanager.azurewebsites.net";
   const char* url = "/home/getconfigvalue?configValueName=pollinginterval";
-  WiFiClient client;
+  //WiFiClient client;
 
   Serial.printf("\n[Connecting to %s ... ", host);
   if (client.connect(host, 80))
   {
     Serial.println("connected]");
 
-    Serial.println("[Requesting Tasks from Farm Manager....]");
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-               "Host: " + host + "\r\n" +
-               "Connection: close\r\n\r\n");
-        unsigned long timeout = millis();
-        while (client.available() == 0) {
-          if (millis() - timeout > 30000) {
-            Serial.println(">>> Client Timeout !");
-            client.stop();
-            return 0;
-          }
-        }
+    //Serial.println("[Requesting Tasks from Farm Manager....]");
+    String fullRequest = String("GET ") + url + " HTTP/1.1\r\n" +  "Host: " + host + "\r\n" +  "Connection: close\r\n\r\n";
+    Serial.println(fullRequest);
+    //client.print(String("GET ") + url + " HTTP/1.1\r\n" +  "Host: " + host + "\r\n" +  "Connection: close\r\n\r\n");
+    client.print(fullRequest);
 
-    Serial.println("[Response:]");
+    WaitForResponse(6000);
+    //Serial.println("[Response:]");
     String line="";
     while (client.connected())
     {
@@ -242,11 +234,10 @@ int GetPollingInterval()
       {
         line = client.readStringUntil('\n');
         //Serial.println("PollingIntervalData:" + line);
-        
       }
     }
     client.stop();
-    Serial.println("\n[Disconnected]");
+    //Serial.println("\n[Disconnected]");
     int pollingInterval = ParseConfigValue(line).toInt();
     return pollingInterval;
   }
@@ -258,7 +249,20 @@ int GetPollingInterval()
 }
 
 
-
+void WaitForResponse(int waitTime)
+{
+  Serial.println("Waiting " + String(waitTime) + " milliseconds for response...");
+  unsigned long tickStart = millis();
+  while (client.available() == 0) 
+  {
+      if (millis() - tickStart > waitTime) 
+      {
+        Serial.println("Request timed out..");
+        client.stop();
+        ESP.restart();
+      }
+   }
+}
 void GetTasks()
 {
   Serial.println("");
@@ -275,16 +279,9 @@ void GetTasks()
     client.flush();
     
     Serial.println("[Requesting Tasks from Farm Manager....]");
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-               "Host: " + host + "\r\n" +
-               "Connection: close\r\n\r\n");
-        unsigned long timeout = millis();
-        while (client.available() == 0) {
-          if (millis() - timeout > 60000) {
-            Serial.println(">>> Client Timeout !");
-            client.stop();
-          }
-        }
+    client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: " + host + "\r\n" + "Connection: close\r\n\r\n");
+
+    WaitForResponse(6000);
 
     Serial.println("[Response:]");
     bool found = false;
@@ -303,10 +300,7 @@ void GetTasks()
       }
     }
 
-//    while (client.available()) {
-//    char ch = static_cast<char>(client.read());
-//    Serial.print(ch);
-//    }
+
 
     Serial.println("Data:" + line);
     client.stop();
@@ -320,56 +314,7 @@ void GetTasks()
   }
 }
 
-//void GetTasks()
-//{
-//  Serial.println("");
-//  Serial.println("---------------------------------------------------");
-//  Serial.println("Into GetTasks");
-//  const char* host="griefffarmmanager.azurewebsites.net";
-//  const char* url = "/home/gettasks";
-//  WiFiClient client;
-//
-//  Serial.printf("\n[Connecting to %s ... ", host);
-//  if (client.connect(host, 80))
-//  {
-//    Serial.println("connected]");
-//
-//    Serial.println("[Requesting Tasks from Farm Manager....]");
-//    
-//    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-//               "Host: " + host + "\r\n" +
-//               "Connection: close\r\n\r\n");
-//        unsigned long timeout = millis();
-//        while (client.available() == 0) {
-//          if (millis() - timeout > 120000) {
-//            Serial.println(">>> Client Timeout !");
-//            client.stop();
-//            return;
-//          }
-//        }
-//
-//    Serial.println("[Response:]");
-//    String line = "";
-//    while (client.connected())
-//    {
-//      if (client.available())
-//      {
-//        line = client.readStringUntil('\n');
-//        
-//        
-//      }
-//    }
-//    Serial.println("taskData:" + line);
-//    ParseTasks(line);
-//    client.stop();
-//    Serial.println("\n[Disconnected]");
-//  }
-//  else
-//  {
-//    Serial.println("Failed to get tasks");
-//    client.stop();
-//  }
-//}
+
 
 void ParseTasks(String taskJson)
 {
@@ -441,7 +386,7 @@ void PostData(String dataType, int dataValue)
   Serial.println("dataValue:" + String(dataValue));
   WiFiClient client;
   client.stop();
- char server[] = "griefffarmmanager.azurewebsites.net";
+  char server[] = "griefffarmmanager.azurewebsites.net";
   // if there's a successful connection:
   if (client.connect(server, 80)) {
     Serial.println("connecting...");
@@ -465,51 +410,124 @@ void PostData(String dataType, int dataValue)
   }
 }
 
+void PostToFarm(String url, String params)
+{
+  Serial.println("");
+  Serial.println("url:" + url);
+  Serial.println("params:" + params);
+  WiFiClient client;
+  client.stop();
+  char server[] = "griefffarmmanager.azurewebsites.net";
+  // if there's a successful connection:
+  if (client.connect(server, 80)) {
+    Serial.println("connecting...");
+    
+    
+    String fullRequest = "POST http://griefffarmmanager.azurewebsites.net/" + url + "?" + params + " HTTP/1.1";
+    Serial.println("fullRequest:" + fullRequest);
+    client.println(fullRequest);
+    client.println("Content-Type: application/x-www-form-urlencoded");
+    client.println("Connection: Keep-Alive");
+    client.println("Content-Length: 40");
+    client.println("Host: griefffarmmanager.azurewebsites.net");
+    client.println();
+    client.println("D92D1AD6-416D-4E12-9D62-E50F3FE176D7=234");
+
+    // note the time that the connection was made:
+    int lastConnectionTime = millis();
+  } else {
+    // if you couldn't make a connection:
+    Serial.println("connection failed");
+  }
+}
+
+void WriteLog(String entryType, String logMessage)
+{
+  PostToFarm("home/logging", "entryType=" + urlencode(entryType) + "&logText=" + urlencode(logMessage));
+}
+
 void MarkTaskComplete(String taskId)
 {
+  
   Serial.println("");
   Serial.println("---------------------------------------------------");
   Serial.println("Into MarkTaskComplete");
   Serial.println(taskId);
+  PostToFarm("home/marktaskcomplete", "taskId=" + urlencode(taskId));
+//  Serial.println("About to connect");
+//  
+//  while(WiFi.status() != WL_CONNECTED)
+//  {
+//    Serial.println("waiting 1 second...");
+//    delay(1000);
+//  }
+//
+//  
+//    if(WiFi.status()== WL_CONNECTED){   
+//        
+//        Serial.println("Connected");
+//        
+//        HTTPClient http;   
+//        http.begin("http://griefffarmmanager.azurewebsites.net/home/MarkTaskcomplete");  
+//        http.addHeader("Content-Type", "application/x-www-form-urlencoded");             
+//        
+//        int httpResponseCode = http.POST("taskId=" + taskId);   
+//        Serial.println("Posted");
+//        if(httpResponseCode>0){
+//        
+//        String response = http.getString();                       
+//        Serial.println(httpResponseCode);   //Print return code
+//        Serial.println(response);           //Print request answer
+//    }
+//    else
+//    {
+//    
+//        Serial.print("Error on sending POST: ");
+//        Serial.println(httpResponseCode);
+//   }
+// 
+//   http.end();  
+// 
+// }else{
+// 
+//    Serial.println("Error in WiFi connection");   
+// 
+// }
+}
 
-  Serial.println("About to connect");
-  while(WiFi.status() != WL_CONNECTED)
-  {
-    Serial.println("waiting 1 second...");
-    delay(1000);
-  }
-
-  
-    if(WiFi.status()== WL_CONNECTED){   
-        
-        Serial.println("Connected");
-        
-        HTTPClient http;   
-        http.begin("http://griefffarmmanager.azurewebsites.net/home/MarkTaskcomplete");  
-        http.addHeader("Content-Type", "application/x-www-form-urlencoded");             
-        
-        int httpResponseCode = http.POST("taskId=" + taskId);   
-        Serial.println("Posted");
-        if(httpResponseCode>0){
-        
-        String response = http.getString();                       
-        Serial.println(httpResponseCode);   //Print return code
-        Serial.println(response);           //Print request answer
+String urlencode(String str)
+{
+    String encodedString="";
+    char c;
+    char code0;
+    char code1;
+    char code2;
+    for (int i =0; i < str.length(); i++){
+      c=str.charAt(i);
+      if (c == ' '){
+        encodedString+= '+';
+      } else if (isalnum(c)){
+        encodedString+=c;
+      } else{
+        code1=(c & 0xf)+'0';
+        if ((c & 0xf) >9){
+            code1=(c & 0xf) - 10 + 'A';
+        }
+        c=(c>>4)&0xf;
+        code0=c+'0';
+        if (c > 9){
+            code0=c - 10 + 'A';
+        }
+        code2='\0';
+        encodedString+='%';
+        encodedString+=code0;
+        encodedString+=code1;
+        //encodedString+=code2;
+      }
+      yield();
     }
-    else
-    {
+    return encodedString;
     
-        Serial.print("Error on sending POST: ");
-        Serial.println(httpResponseCode);
-   }
- 
-   http.end();  
- 
- }else{
- 
-    Serial.println("Error in WiFi connection");   
- 
- }
 }
 
 void ProcessTask(JsonObject& task)
