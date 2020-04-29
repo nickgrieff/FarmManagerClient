@@ -13,14 +13,11 @@
 //
 
 
-
 #include <SimpleDHT.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
-#include <ESP8266WiFiMulti.h>
 #include <ESP8266HTTPClient.h>
-ESP8266WiFiMulti WiFiMulti;
 
 //Standard retry intervals..
 int retry=1;
@@ -37,6 +34,7 @@ const char* ssid = "GRIEFF2";
 const char* password = "Archangel";
 WiFiClient client;
 
+unsigned long startTime = millis();
 
 void setup() {
   
@@ -69,10 +67,12 @@ void setup() {
     retry++;
   }
   Serial.println("Connected !!");
-  WriteLog("INFO", "ESP8266 is in startup");
+  WriteLog("ESP8266", "ESP8266 is in startup");
   long rssi = WiFi.RSSI();
   Serial.print("RSSI:");
   Serial.println(rssi);
+
+  
 }
 
 
@@ -83,31 +83,42 @@ void loop() {
   Serial.println("");
   Serial.println("======================================================================================");
   Serial.println("");
- 
-
-  Serial.println("Version Date: 2020-04-19");
-    PostMoistureData();
-    PostTemperatureAndHumidityData();
-    PostLightData();
-  //PostSensorPowerData();
-  //PostFarmBatteryPowerData();
+  Serial.println("Version Date: 2020-04-29");
   
+  PostSensorData();    
+
+  GetTasks();
+
+  Wait();
+  
+}
+
+void Wait()
+{
+  Serial.println("Waiting 2 seconds before getting polling interval...");
   delay(2000);
   int pollingInterval = GetPollingInterval() * 1000;
   if (pollingInterval ==0)
   {
     pollingInterval=30000;
   }
-
-  Serial.println("Waiting 2 seconds before getting tasks...");
-  delay(2000);
-  GetTasks();
-
-  //ESP.restart();
-  Serial.println("Waiting " + String(pollingInterval/60000) + " minutes before calling again..");
-  WriteLog("WAIT", "Waiting " + String(pollingInterval/60000) + " minutes before calling again..");
+  WriteLog("ESP8266", "Waiting " + String(pollingInterval/60000) + " minutes before calling again..");
+  
   delay(pollingInterval);
+  unsigned long upTime = millis()-startTime;
+  WriteLog("UPTIME",  String(upTime/60000)+ " minutes");
 }
+
+void PostSensorData()
+{
+    Serial.println("Post sensor data...");
+    PostMoistureData();
+    PostTemperatureAndHumidityData();
+    PostLightData();
+  //PostSensorPowerData();
+  //PostFarmBatteryPowerData();
+}
+
 
 void PostTemperatureAndHumidityData()
 {
@@ -212,32 +223,26 @@ int GetPollingInterval()
   Serial.println("Into GetPollingInterval");
   const char* host="griefffarmmanager.azurewebsites.net";
   const char* url = "/home/getconfigvalue?configValueName=pollinginterval";
-  //WiFiClient client;
 
   Serial.printf("\n[Connecting to %s ... ", host);
   if (client.connect(host, 80))
   {
-    Serial.println("connected]");
-
-    //Serial.println("[Requesting Tasks from Farm Manager....]");
+    Serial.println("Connected for polling interval");
     String fullRequest = String("GET ") + url + " HTTP/1.1\r\n" +  "Host: " + host + "\r\n" +  "Connection: close\r\n\r\n";
     Serial.println(fullRequest);
-    //client.print(String("GET ") + url + " HTTP/1.1\r\n" +  "Host: " + host + "\r\n" +  "Connection: close\r\n\r\n");
     client.print(fullRequest);
 
     WaitForResponse(6000);
-    //Serial.println("[Response:]");
+  
     String line="";
     while (client.connected())
     {
       if (client.available())
       {
         line = client.readStringUntil('\n');
-        //Serial.println("PollingIntervalData:" + line);
       }
     }
     client.stop();
-    //Serial.println("\n[Disconnected]");
     int pollingInterval = ParseConfigValue(line).toInt();
     return pollingInterval;
   }
@@ -263,14 +268,17 @@ void WaitForResponse(int waitTime)
       }
    }
 }
+
 void GetTasks()
 {
+  Serial.println("Waiting 2 seconds before getting tasks...");
+  delay(2000);
   Serial.println("");
   Serial.println("---------------------------------------------------");
   Serial.println("Into GetTasks");
   const char* host="griefffarmmanager.azurewebsites.net";
   const char* url = "/home/gettasks";
-  WiFiClient client;
+ 
   
   Serial.printf("\n[Connecting to %s ... ", host);
   if (client.connect(host, 80))
@@ -384,30 +392,8 @@ void PostData(String dataType, int dataValue)
   Serial.println("");
   Serial.println("dataType:" + String(dataType));
   Serial.println("dataValue:" + String(dataValue));
-  WiFiClient client;
-  client.stop();
-  char server[] = "griefffarmmanager.azurewebsites.net";
-  // if there's a successful connection:
-  if (client.connect(server, 80)) {
-    Serial.println("connecting...");
-    //"/home/trackinginfo?dataType=D92D1AD6-416D-4E12-9D62-E50F3FE176D7&dataValue=234"
-    // send the HTTP GET request:
-    String fullRequest =  String("POST http://griefffarmmanager.azurewebsites.net/home/trackinginfo?dataType=" + dataType + "&dataValue=" + String(dataValue) + " HTTP/1.1");
-    Serial.println("fullRequest:" + fullRequest);
-    client.println("POST http://griefffarmmanager.azurewebsites.net/home/trackinginfo?dataType=" + dataType + "&dataValue=" + String(dataValue) + " HTTP/1.1");
-    client.println("Content-Type: application/x-www-form-urlencoded");
-    client.println("Connection: Keep-Alive");
-    client.println("Content-Length: 40");
-    client.println("Host: griefffarmmanager.azurewebsites.net");
-    client.println();
-    client.println("D92D1AD6-416D-4E12-9D62-E50F3FE176D7=234");
-
-    // note the time that the connection was made:
-    int lastConnectionTime = millis();
-  } else {
-    // if you couldn't make a connection:
-    Serial.println("connection failed");
-  }
+  String params = "dataType=" + dataType + "&dataValue=" + String(dataValue);
+  PostToFarm("home/trackinginfo", params);
 }
 
 void PostToFarm(String url, String params)
@@ -415,7 +401,7 @@ void PostToFarm(String url, String params)
   Serial.println("");
   Serial.println("url:" + url);
   Serial.println("params:" + params);
-  WiFiClient client;
+  
   client.stop();
   char server[] = "griefffarmmanager.azurewebsites.net";
   // if there's a successful connection:
@@ -432,10 +418,8 @@ void PostToFarm(String url, String params)
     client.println("Host: griefffarmmanager.azurewebsites.net");
     client.println();
     client.println("D92D1AD6-416D-4E12-9D62-E50F3FE176D7=234");
-
-    // note the time that the connection was made:
-    int lastConnectionTime = millis();
-  } else {
+  } 
+  else {
     // if you couldn't make a connection:
     Serial.println("connection failed");
   }
@@ -444,6 +428,7 @@ void PostToFarm(String url, String params)
 void WriteLog(String entryType, String logMessage)
 {
   PostToFarm("home/logging", "entryType=" + urlencode(entryType) + "&logText=" + urlencode(logMessage));
+  Serial.println(logMessage);
 }
 
 void MarkTaskComplete(String taskId)
@@ -454,45 +439,7 @@ void MarkTaskComplete(String taskId)
   Serial.println("Into MarkTaskComplete");
   Serial.println(taskId);
   PostToFarm("home/marktaskcomplete", "taskId=" + urlencode(taskId));
-//  Serial.println("About to connect");
-//  
-//  while(WiFi.status() != WL_CONNECTED)
-//  {
-//    Serial.println("waiting 1 second...");
-//    delay(1000);
-//  }
-//
-//  
-//    if(WiFi.status()== WL_CONNECTED){   
-//        
-//        Serial.println("Connected");
-//        
-//        HTTPClient http;   
-//        http.begin("http://griefffarmmanager.azurewebsites.net/home/MarkTaskcomplete");  
-//        http.addHeader("Content-Type", "application/x-www-form-urlencoded");             
-//        
-//        int httpResponseCode = http.POST("taskId=" + taskId);   
-//        Serial.println("Posted");
-//        if(httpResponseCode>0){
-//        
-//        String response = http.getString();                       
-//        Serial.println(httpResponseCode);   //Print return code
-//        Serial.println(response);           //Print request answer
-//    }
-//    else
-//    {
-//    
-//        Serial.print("Error on sending POST: ");
-//        Serial.println(httpResponseCode);
-//   }
-// 
-//   http.end();  
-// 
-// }else{
-// 
-//    Serial.println("Error in WiFi connection");   
-// 
-// }
+
 }
 
 String urlencode(String str)
@@ -558,6 +505,7 @@ void ProcessTask(JsonObject& task)
   switch(taskType.toInt())
   {
     case SOLENOID:
+    WriteLog("ESP8266", "Opening solenoid");
       digitalWrite(D2, HIGH);
       break;
       
@@ -567,19 +515,23 @@ void ProcessTask(JsonObject& task)
 //      break;
 
     case PUMP_ON:
+      WriteLog("ESP8266", "Turning pump on");
       digitalWrite(D8, HIGH);
       break;
 
     case PUMP_OFF: 
+      WriteLog("ESP8266", "Turning pump off");
       digitalWrite(D8, LOW);
       break;
 
     case FANS_ON:
+      WriteLog("ESP8266", "Turning fans on");
       Serial.println("Setting D8 high...");
       digitalWrite(D5, HIGH);
       break;
 
     case FANS_OFF:
+      WriteLog("ESP8266", "Turning fans off");
       digitalWrite(D5, LOW);
       break;
   }
