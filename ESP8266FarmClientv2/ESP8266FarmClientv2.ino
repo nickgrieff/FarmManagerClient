@@ -10,14 +10,18 @@
 //  7 - Pump  -ve
 //  8 - Pump  +ve
 //
+//  Boards reference: http://arduino.esp8266.com/stable/package_esp8266com_index.json,http://resource.heltec.cn/download/package_heltec_esp32_index.json
 //
-
 
 #include <SimpleDHT.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+
+const int MULTIPLEXER_MOISTURE =0;
+const int MULTIPLEXER_LIGHT = 1;
+
 
 //Standard retry intervals..
 int retry=1;
@@ -59,20 +63,12 @@ void setup() {
 
   Serial.printf("Connecting to %s ", ssid);
   WiFi.begin(ssid, password);
-  retry = 1;
-  while (WiFi.status() != WL_CONNECTED && retry<maxRetry)
-  {
-    delay(500);
-    Serial.println("Connection attempt " + String(retry) + " of " + String(maxRetry) );
-    retry++;
-  }
-  Serial.println("Connected !!");
+  EnsureWifi();
+  
   WriteLog("ESP8266", "ESP8266 is in startup");
   long rssi = WiFi.RSSI();
   Serial.print("RSSI:");
   Serial.println(rssi);
-
-  
 }
 
 
@@ -83,7 +79,8 @@ void loop() {
   Serial.println("");
   Serial.println("======================================================================================");
   Serial.println("");
-  Serial.println("Version Date: 2020-04-29");
+  Serial.println("Version Date: 2020-05-03");
+  EnsureWifi();
   
   PostSensorData();    
 
@@ -106,7 +103,7 @@ void Wait()
   
   delay(pollingInterval);
   unsigned long upTime = millis()-startTime;
-  WriteLog("UPTIME",  String(upTime/60000)+ " minutes");
+  WriteLog("UPTIME",  String(upTime/60000));
 }
 
 void PostSensorData()
@@ -117,6 +114,29 @@ void PostSensorData()
     PostLightData();
   //PostSensorPowerData();
   //PostFarmBatteryPowerData();
+}
+
+void EnsureWifi()
+{
+  Serial.println("Checking wifi is connected....");
+  //Keep trying to get a connection until we hit the max retry limit
+  retry = 1;
+  while (WiFi.status() != WL_CONNECTED && retry<maxRetry)
+  {
+    delay(500);
+    Serial.println("Connection attempt " + String(retry) + " of " + String(maxRetry) );
+    retry++;
+  }
+
+  //Check if we are connected or we reached the max retries....
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    Serial.println("Connected !!");
+  }
+  else
+  {
+    Serial.println("Failed to connect");
+  }  
 }
 
 
