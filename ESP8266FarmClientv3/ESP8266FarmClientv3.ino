@@ -13,6 +13,13 @@
 //  Boards reference: http://arduino.esp8266.com/stable/package_esp8266com_index.json,http://resource.heltec.cn/download/package_heltec_esp32_index.json
 //
 
+//Sensor wiring config: 
+//Brown - Earth
+//Stripe Brown - Power
+//Stripe Green - Signal Ouput
+//Stripe Blue - Multiplexer low bit 
+//Orange - Multiplexer high bit
+
 #include <SimpleDHT.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -22,9 +29,21 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include "DHT.h"
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
+
+#define SOLENOID_1 3
+#define SOLENOID_2 15
+#define SOLENOID_3 13
+#define HP_PUMP 12
+#define FANS 14
+
+#define MULTIPLEXER_LOW_BIT 9
+#define MULTIPLEXER_HIGH_BIT 10
+#define COMMON_ADC A0
+#define TEMP_HUMID_SENSOR 16
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET    0 // Reset pin # (or -1 if sharing Arduino reset pin)
@@ -34,6 +53,8 @@ String panelText[3];
 const int MULTIPLEXER_MOISTURE =0;
 const int MULTIPLEXER_LIGHT = 1;
 
+//#define DHTTYPE DHT11 
+//DHT dht(TEMP_HUMID_SENSOR, DHTTYPE);
 
 //Standard retry intervals..
 int retry=1;
@@ -43,8 +64,8 @@ int maxRetry = 50;
 int sensorPin = A0;
 
 //GPIO 0 / D3 is the Humidity sensor
-int pinDHT11 = 0;
-SimpleDHT11 dht11(pinDHT11);
+//int pinDHT11 = 0;
+SimpleDHT11 dht11(TEMP_HUMID_SENSOR);
 
 const char* ssid = "GRIEFF";
 const char* password = "Archangel";
@@ -76,21 +97,19 @@ void setup() {
 
   
   
-  //D0 is the unit bit of the multiplexer bitmask
-  pinMode(D0, OUTPUT);
-
-  //D1 is the 2 bit of the multiplexer bitmask
-   pinMode(D1, OUTPUT);
+ 
+  pinMode(MULTIPLEXER_LOW_BIT, OUTPUT);
+  pinMode(MULTIPLEXER_HIGH_BIT, OUTPUT);
+  pinMode(SOLENOID_1, OUTPUT);
+  pinMode(SOLENOID_2, OUTPUT);
+  pinMode(SOLENOID_3, OUTPUT);
+  pinMode(FANS, OUTPUT);
+  pinMode(HP_PUMP, OUTPUT);
+  pinMode(TEMP_HUMID_SENSOR,INPUT);
    
-  //D2 is the Solenoid (24v) pin
-  pinMode(D2, OUTPUT);
-
-  //D5 is the High Pressure pump (12v) pin
-  pinMode(D5, OUTPUT);
-
-  //D8 is the lights (12v) - no diode protection
-  pinMode(D8, OUTPUT);
-
+  
+  log("ESP8266 Farm Client 3");
+  delay(2000);
   Serial.printf("Connecting to %s ", ssid);
   log("Connecting to " + String(ssid));
   WiFi.begin(ssid, password);
@@ -118,9 +137,9 @@ void loop() {
   
   PostSensorData();    
 
-  GetTasks();
+  //GetTasks();
 
-  Wait();
+  //Wait();
   
 }
 
@@ -188,6 +207,7 @@ void PostTemperatureAndHumidityData()
         delay(2000);
         int err = SimpleDHTErrSuccess;
         if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
+          log("Failed Temp/Humidity");
           Serial.print("Read DHT11 failed, err="); Serial.println(err);delay(1000);
           return;
         }
@@ -196,27 +216,75 @@ void PostTemperatureAndHumidityData()
         Serial.print((int)temperature); Serial.print(" *C, "); 
         Serial.print((int)humidity); Serial.println(" H");
         Serial.println("currentTemperature:" + String(temperature));
+        log("Temp : "  + String(temperature));
         PostData(TEMPERATURE, (int)temperature);
         Serial.println("currentHumidity:" + String(humidity));
+        log("Humidity : " + String(humidity));
         PostData(HUMIDITY, (int)humidity);
         
         Serial.println("---------------------------------------------------");
   Serial.println("");
 }
 
+//void readTempAndHumidity()
+//{
+//   // Wait a few seconds between measurements.
+//  delay(2000);
+//
+//  // Reading temperature or humidity takes about 250 milliseconds!
+//  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+//  float h = dht.readHumidity();
+//  // Read temperature as Celsius (the default)
+//  float t = dht.readTemperature();
+//  // Read temperature as Fahrenheit (isFahrenheit = true)
+//  float f = dht.readTemperature(true);
+//
+//  // Check if any reads failed and exit early (to try again).
+//  if (isnan(h) || isnan(t) || isnan(f)) {
+//    Serial.println(F("Failed to read from DHT sensor!"));
+//    return;
+//  }
+//
+//  // Compute heat index in Fahrenheit (the default)
+//  float hif = dht.computeHeatIndex(f, h);
+//  // Compute heat index in Celsius (isFahreheit = false)
+//  float hic = dht.computeHeatIndex(t, h, false);
+//
+//  String TEMPERATURE = String("D92D1AD6-416D-4E12-9D62-E50F3FE176D7");
+//  String HUMIDITY = String("CBD9A0A7-5347-4583-B5FA-054BA8E9D448");
+//  log("Temperature: " + String(t));
+//  PostData(TEMPERATURE, (int)t);
+//  delay(2000);
+//  log("Humidity: " + String(h));
+//  PostData(HUMIDITY, (int)h);
+//  delay(2000);
+//  Serial.print(F("Humidity: "));
+//  Serial.print(h);
+//  Serial.print(F("%  Temperature: "));
+//  Serial.print(t);
+//  Serial.print(F("°C "));
+//  Serial.print(f);
+//  Serial.print(F("°F  Heat index: "));
+//  Serial.print(hic);
+//  Serial.print(F("°C "));
+//  Serial.print(hif);
+//  Serial.println(F("°F"));
+//}
+
 void PostMoistureData()
 {
   Serial.println("");
     Serial.println("---------------------------------------------------");
    Serial.println("Into PostMoistureData");
-   log("Posting moisture");
+   log("Checking moisture");
    String MOISTURE =  String("72CFAC9D-B72A-4683-99C2-6FABA4A8A650");
    delay(2000);
-   digitalWrite(D0, 0);
-   digitalWrite(D1,0);
+   digitalWrite(MULTIPLEXER_LOW_BIT, 0);
+   digitalWrite(MULTIPLEXER_HIGH_BIT,0);
    delay(2000);
-   int currentMoisture = analogRead(sensorPin);
-   Serial.println("currentMoisture:" + String(currentMoisture));
+   int currentMoisture = analogRead(COMMON_ADC);
+   Serial.println("Moisture : " + String(currentMoisture));
+   log("Moisture : " + String(currentMoisture));
    PostData(MOISTURE, currentMoisture);
    Serial.println("---------------------------------------------------");
   Serial.println("");
@@ -262,13 +330,14 @@ void PostLightData()
     Serial.println("");
     Serial.println("---------------------------------------------------");
    Serial.println("Into PostLightData");
-   log("Posting light");
+   log("Checking light");
    const String LIGHT = String("6BDB843C-8015-4150-B69E-B0EE73479C3B");
-   digitalWrite(D0, 1);
-   digitalWrite(D1,0);
+   digitalWrite(MULTIPLEXER_LOW_BIT, 1);
+   digitalWrite(MULTIPLEXER_HIGH_BIT,0);
    delay(2000);
-   int currentLight= analogRead(sensorPin);
-   Serial.println("Light:" + String(currentLight));
+   int currentLight= analogRead(COMMON_ADC);
+   Serial.println("Light : " + String(currentLight));
+   log("Light:" + String(currentLight));
    PostData(LIGHT, 1000-currentLight);
   Serial.println("---------------------------------------------------");
   Serial.println("");
@@ -546,73 +615,103 @@ void ProcessTask(JsonObject& task)
   
   String id = task["id"];
   Serial.println("Task:"   + id);
+  
   String taskType=task["taskType"];
   Serial.println("TaskType:" + taskType);
   String duration = task["taskParam"];
   Serial.println("Param:" + duration);
   String description = task["taskDescription"];
   Serial.println("Description:" + description);
+  log("Task: "   + description);
 
-  const int SOLENOID = 0;
-  const int HP_PUMP = 1;
-  const int PUMP_ON = 2;
-  const int PUMP_OFF = 3;
-  const int FANS_ON = 4;
-  const int FANS_OFF = 5;
+
+  const int OpenMistingSolenoid = 0;
+  const int HighPressurePump = 1;
+  const int LightsOn = 2;
+  const int LightsOff = 3;
+  const int FansOn = 4;
+  const int FansOff = 5;
+  const int OpenSolenoid1 = 6;
+  const int OpenSolenoid2 = 7;
+  const int OpenSolenoid3 = 8;
  
   int durationSeconds = duration.toInt();
   Serial.println("Duration is: " + String(duration));
   Serial.println("Task type is:" + String(taskType));
+  log("Task type : " + String(taskType));
   switch(taskType.toInt())
   {
-    case SOLENOID:
-    WriteLog("ESP8266", "Opening solenoid");
-      digitalWrite(D2, HIGH);
+
+    case HighPressurePump:
+      WriteLog("ESP32", "Turning pump on");
+      pinHigh(HP_PUMP);
+      break;
+
+    case FansOn:
+      WriteLog("ESP32", "Turning fans on");
+      pinHigh(FANS);
+      break;
+
+    case FansOff:
+      WriteLog("ESP32", "Turning fans off");
+      pinLow(FANS);
+      break;
+
+    case OpenSolenoid1:
+      WriteLog("ESP32", "Opening Solenoid 1");
+      pinHigh(SOLENOID_1);
       break;
       
-//    case HP_PUMP:
-//       //If the lights are on then turn them off temporarily to allow the pump to run off the same source...
-//      digitalWrite(D5, HIGH);
-//      break;
-
-    case PUMP_ON:
-      WriteLog("ESP8266", "Turning pump on");
-      digitalWrite(D8, HIGH);
+    case OpenSolenoid2:
+      WriteLog("ESP32", "Opening Solenoid 2");
+      pinHigh(SOLENOID_2);
       break;
-
-    case PUMP_OFF: 
-      WriteLog("ESP8266", "Turning pump off");
-      digitalWrite(D8, LOW);
+      
+     case OpenSolenoid3:
+      WriteLog("ESP32", "Opening Solenoid 3");
+      pinHigh(SOLENOID_3);
       break;
-
-    case FANS_ON:
-      WriteLog("ESP8266", "Turning fans on");
-      Serial.println("Setting D8 high...");
-      digitalWrite(D5, HIGH);
-      break;
-
-    case FANS_OFF:
-      WriteLog("ESP8266", "Turning fans off");
-      digitalWrite(D5, LOW);
-      break;
+      
+    
   }
   if (durationSeconds != 0)
   {
     Serial.println("This task comes with a duration, so wait for the specified duration (" + String(durationSeconds) + " seconds) then set the pin low...");
     delay(durationSeconds * 1000);
+    log("Duration " + String(durationSeconds) + " seconds");
     switch(taskType.toInt())
     {
-      case SOLENOID:
-        digitalWrite(D2, LOW);
+      case OpenSolenoid1:
+        WriteLog("ESP32", "Closing Solenoid 1");
+        log("Closing Solenoid 1");
+        pinLow(SOLENOID_1);
         break;
 
-      case PUMP_ON:
-        digitalWrite(D8, LOW);
+      case OpenSolenoid2:
+        WriteLog("ESP32", "Closing Solenoid 2");
+        log("Closing Solenoid 2");
+        pinLow(SOLENOID_2);
         break;
 
-      case FANS_ON:
-        digitalWrite(D5, LOW);
+      case OpenSolenoid3:
+        WriteLog("ESP32", "Closing Solenoid 3");
+        log("Closing Solenoid 3");
+        pinLow(SOLENOID_3);
         break;
+
+      case HighPressurePump:
+        WriteLog("ESP32", "Stopping HP Pump");
+        log("Stopping HP Pump");
+        pinLow(HP_PUMP);
+        break;
+
+      case FansOn:
+        WriteLog("ESP32", "Stopping Fans");
+        log("Stopping Fans");
+        pinLow(FANS);
+        break;
+
+      
     }
   }
   
@@ -642,4 +741,16 @@ void drawDisplay(void) {
   display.print(panelText[2]);
   display.display();      // Show initial text
   delay(100);
+}
+
+void pinHigh(int pin)
+{
+  log("Pin " + String(pin) + " high...");
+  digitalWrite(pin, HIGH);
+}
+
+void pinLow(int pin)
+{
+  log("Pin " + String(pin) + " low...");
+  digitalWrite(pin, LOW);
 }
