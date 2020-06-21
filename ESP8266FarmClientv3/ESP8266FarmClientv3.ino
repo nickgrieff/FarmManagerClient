@@ -16,9 +16,11 @@
 //Sensor wiring config: 
 //Brown - Earth
 //Stripe Brown - Power
-//Stripe Green - Signal Ouput
+//Stripe Green - Signal Ouput (Analog)
 //Stripe Blue - Multiplexer low bit 
 //Orange - Multiplexer high bit
+//Green - Humidity/Temp Sensor
+
 
 #include <SimpleDHT.h>
 #include <Arduino.h>
@@ -34,11 +36,13 @@
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
 
-#define SOLENOID_1 3
+#define SOLENOID_1 14
 #define SOLENOID_2 15
 #define SOLENOID_3 13
 #define HP_PUMP 12
-#define FANS 14
+
+//Right-most power connection
+#define FANS 3
 
 #define MULTIPLEXER_LOW_BIT 9
 #define MULTIPLEXER_HIGH_BIT 10
@@ -58,7 +62,7 @@ const int MULTIPLEXER_LIGHT = 1;
 
 //Standard retry intervals..
 int retry=1;
-int maxRetry = 50;
+int maxRetry = 10;
 
 //A0 is the only analog pin on the ESP8266
 int sensorPin = A0;
@@ -112,7 +116,7 @@ void setup() {
   delay(2000);
   Serial.printf("Connecting to %s ", ssid);
   log("Connecting to " + String(ssid));
-  WiFi.begin(ssid, password);
+  //WiFi.begin(ssid, password);
   EnsureWifi();
   
   WriteLog("ESP8266", "ESP8266 is in startup");
@@ -122,6 +126,7 @@ void setup() {
 
   macAddress=WiFi.macAddress();
   log("Mac:" + macAddress);
+  delay(5000);
 }
 
 
@@ -137,9 +142,9 @@ void loop() {
   
   PostSensorData();    
 
-  //GetTasks();
+  GetTasks();
 
-  //Wait();
+  Wait();
   
 }
 
@@ -163,20 +168,45 @@ void PostSensorData()
 {
     log("Post sensor data...");
     PostMoistureData();
-    PostTemperatureAndHumidityData();
     PostLightData();
+    //PostTemperatureAndHumidityData();
   //PostSensorPowerData();
   //PostFarmBatteryPowerData();
 }
 
 void EnsureWifi()
 {
+
+//  WiFi.disconnect();
+//  WiFi.begin(ssid, password);
+//  retry = 1;
+//  log("About to try for wifi");
+//  log("Connecting to " + String(ssid));
+//  while (WiFi.status() != WL_CONNECTED && retry<maxRetry)
+//  {
+//    WiFi.begin(ssid, password);
+//    delay(1000);
+//    //Serial.println("Connection attempt " + String(retry) + " of " + String(maxRetry) );
+//    log("Attempt " + String(retry) + " of " + String(maxRetry));
+//    retry++;
+//  }
+//  if (WiFi.status()==WL_CONNECTED)
+//  {
+//    log("Connected at try " + String(retry));
+//  }
+//  else
+//  {
+//    log("No Connection");
+//  }
+  
+  //
   Serial.println("Checking wifi is connected....");
   log("Checking connected");
   //Keep trying to get a connection until we hit the max retry limit
   retry = 1;
   while (WiFi.status() != WL_CONNECTED && retry<maxRetry)
   {
+    WiFi.begin(ssid, password);
     delay(500);
     Serial.println("Connection attempt " + String(retry));
     log("Connection attempt " + String(retry));
@@ -186,11 +216,12 @@ void EnsureWifi()
   //Check if we are connected or we reached the max retries....
   if (WiFi.status() == WL_CONNECTED)
   {
-    Serial.println("Connected !!");
+    log("Connected !!");
   }
   else
   {
-    Serial.println("Failed to connect");
+    log("Failed to connect");
+    ESP.restart();
   }  
 }
 
@@ -400,13 +431,13 @@ void WaitForResponse(int waitTime)
 void GetTasks()
 {
   Serial.println("Waiting 2 seconds before getting tasks...");
+  log("Getting Tasks");
   delay(2000);
   Serial.println("");
   Serial.println("---------------------------------------------------");
   Serial.println("Into GetTasks");
-  log("Getting tasks");
   const char* host="griefffarmmanager.azurewebsites.net";
-  const char* url = "/home/gettasks";
+  const char* url = "/task/gettasks?MacAddress=";
  
   
   Serial.printf("\n[Connecting to %s ... ", host);
@@ -416,7 +447,7 @@ void GetTasks()
     client.flush();
     
     Serial.println("[Requesting Tasks from Farm Manager....]");
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: " + host + "\r\n" + "Connection: close\r\n\r\n");
+    client.print(String("GET ") + url + macAddress + " HTTP/1.1\r\n" + "Host: " + host + "\r\n" + "Connection: close\r\n\r\n");
 
     WaitForResponse(30000);
 
@@ -432,6 +463,7 @@ void GetTasks()
         //Serial.println(line.substring(2,6));
         if (line.substring(2,6) == "data") {
           Serial.println("Found the data line...");
+          log("Found task data");
           found=true;
         }
       }
@@ -450,6 +482,8 @@ void GetTasks()
     client.stop();
   }
 }
+
+
 
 
 
@@ -548,6 +582,10 @@ void PostToFarm(String url, String params)
     client.println("Host: griefffarmmanager.azurewebsites.net");
     client.println();
     client.println("D92D1AD6-416D-4E12-9D62-E50F3FE176D7=234");
+
+    String line = client.readStringUntil('\n');
+    //Serial.println(line);
+    log(line);
   } 
   else {
     // if you couldn't make a connection:
@@ -557,7 +595,7 @@ void PostToFarm(String url, String params)
 
 void WriteLog(String entryType, String logMessage)
 {
-  PostToFarm("home/logging", "entryType=" + urlencode(entryType) + "&logText=" + urlencode(logMessage));
+  PostToFarm("logging/add", "entryType=" + urlencode(entryType) + "&logText=" + urlencode(logMessage)+ "&controllerId=" + urlencode(macAddress));
   Serial.println(logMessage);
 }
 
@@ -568,7 +606,7 @@ void MarkTaskComplete(String taskId)
   Serial.println("---------------------------------------------------");
   Serial.println("Into MarkTaskComplete");
   Serial.println(taskId);
-  PostToFarm("task/marktaskcomplete", "taskId=" + urlencode(taskId));
+  PostToFarm("task/marktaskcomplete", "taskId=" + urlencode(taskId)+ "&controllerId=" + urlencode(macAddress));
 
 }
 
