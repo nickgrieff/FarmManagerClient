@@ -37,12 +37,12 @@
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
  
 #define SOLENOID_1 12
-#define SOLENOID_2 3
-#define SOLENOID_3 14 //GPIO6
-#define HP_PUMP 13 //GPIO7 Socket 2
+#define SOLENOID_2 2 //D4 Socket 5 
+#define SOLENOID_3 14 //D5 Socket 4
+#define HP_PUMP 13 //D7 Socket 2
 //#define LP_PUMP 14 //GPIO5
 //Right-most power connection
-#define FANS 15 //GPIO8 Socket 1
+#define FANS 15 //D8 Socket 1
 
 #define MULTIPLEXER_LOW_BIT 9
 #define MULTIPLEXER_HIGH_BIT 10
