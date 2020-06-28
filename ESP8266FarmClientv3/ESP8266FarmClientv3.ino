@@ -36,7 +36,7 @@
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
  
-#define SOLENOID_1 12
+#define SOLENOID_1 0 //D3 Socket 6
 #define SOLENOID_2 2 //D4 Socket 5 
 #define SOLENOID_3 14 //D5 Socket 4
 #define HP_PUMP 13 //D7 Socket 2
