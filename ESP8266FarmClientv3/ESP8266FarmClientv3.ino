@@ -35,14 +35,14 @@
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
-
-#define SOLENOID_1 14
+ 
+#define SOLENOID_1 12
 #define SOLENOID_2 3
-#define SOLENOID_3 12
-#define HP_PUMP 13
-
+#define SOLENOID_3 14 //GPIO6
+#define HP_PUMP 13 //GPIO7 Socket 2
+//#define LP_PUMP 14 //GPIO5
 //Right-most power connection
-#define FANS 15
+#define FANS 15 //GPIO8 Socket 1
 
 #define MULTIPLEXER_LOW_BIT 9
 #define MULTIPLEXER_HIGH_BIT 10
@@ -672,6 +672,7 @@ void ProcessTask(JsonObject& task)
   const int OpenSolenoid1 = 6;
   const int OpenSolenoid2 = 7;
   const int OpenSolenoid3 = 8;
+  const int LowPressurePump = 9;
  
   int durationSeconds = duration.toInt();
   Serial.println("Duration is: " + String(duration));
