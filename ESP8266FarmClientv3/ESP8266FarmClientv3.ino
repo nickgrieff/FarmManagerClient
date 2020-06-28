@@ -37,12 +37,12 @@
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
 
 #define SOLENOID_1 14
-#define SOLENOID_2 15
-#define SOLENOID_3 13
-#define HP_PUMP 12
+#define SOLENOID_2 3
+#define SOLENOID_3 12
+#define HP_PUMP 13
 
 //Right-most power connection
-#define FANS 3
+#define FANS 15
 
 #define MULTIPLEXER_LOW_BIT 9
 #define MULTIPLEXER_HIGH_BIT 10
@@ -126,7 +126,7 @@ void setup() {
 
   macAddress=WiFi.macAddress();
   log("Mac:" + macAddress);
-  delay(5000);
+  delay(1000);
 }
 
 
@@ -138,13 +138,13 @@ void loop() {
   Serial.println("======================================================================================");
   Serial.println("");
   Serial.println("Version Date: 2020-05-03");
-  EnsureWifi();
+  //EnsureWifi();
   
-  PostSensorData();    
+  //PostSensorData();    
 
   GetTasks();
 
-  Wait();
+  //Wait();
   
 }
 
@@ -155,7 +155,7 @@ void Wait()
   int pollingInterval = GetPollingInterval() * 1000;
   if (pollingInterval ==0)
   {
-    pollingInterval=30000;
+    pollingInterval=10000;
   }
   WriteLog("ESP8266", "Waiting " + String(pollingInterval/60000) + " minutes before calling again..");
   log ("Waiting " + String(pollingInterval/60000) + " mins..");
