@@ -22,7 +22,7 @@
 //Green - Humidity/Temp Sensor
 
 
-#include <SimpleDHT.h>
+//#include <SimpleDHT.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
@@ -31,23 +31,39 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include "DHT.h"
+//#include <DHT.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+#include <DHTesp.h>
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
  
 #define SOLENOID_1 0 //D3 Socket 6
+//GPIO 1 is TX
 #define SOLENOID_2 2 //D4 Socket 5 
-#define SOLENOID_3 14 //D5 Socket 4
-#define HP_PUMP 13 //D7 Socket 2
-//#define LP_PUMP 14 //GPIO5
-//Right-most power connection
-#define FANS 15 //D8 Socket 1
-
+//GPI0 4 is used for the OLED
+//GPI0 5 is used for the OLED
+//GPIO 6/7/8 don't exist
 #define MULTIPLEXER_LOW_BIT 9
 #define MULTIPLEXER_HIGH_BIT 10
-#define COMMON_ADC A0
+//GPIO 11 doesn't exist
+#define LP_PUMP 12 //Socket 3
+#define HP_PUMP 13 //D7 Socket 2
+#define SOLENOID_3 14 //D5 Socket 4
+#define FANS 15 //D8 Socket 1
 #define TEMP_HUMID_SENSOR 16
+
+#define COMMON_ADC A0
+
+
+/** Initialize DHT sensor */
+DHTesp dht;
+/** Task handle for the light value read task */
+//TaskHandle_t tempTaskHandle = NULL;
+/** Pin number for DHT11 data pin */
+
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET    0 // Reset pin # (or -1 if sharing Arduino reset pin)
@@ -57,8 +73,6 @@ String panelText[3];
 const int MULTIPLEXER_MOISTURE =0;
 const int MULTIPLEXER_LIGHT = 1;
 
-//#define DHTTYPE DHT11 
-//DHT dht(TEMP_HUMID_SENSOR, DHTTYPE);
 
 //Standard retry intervals..
 int retry=1;
@@ -67,21 +81,22 @@ int maxRetry = 10;
 //A0 is the only analog pin on the ESP8266
 int sensorPin = A0;
 
-//GPIO 0 / D3 is the Humidity sensor
-//int pinDHT11 = 0;
-SimpleDHT11 dht11(TEMP_HUMID_SENSOR);
-
 const char* ssid = "GRIEFF";
 const char* password = "Archangel";
 WiFiClient client;
-String macAddress="";
+String macAddress=WiFi.macAddress();
 unsigned long startTime = millis();
+
+  String deviceName = macAddress=="38:2B:78:03:85:03"?"Test ESP8266":"Live ESP8266";
+
 
 void setup() {
   
   Serial.begin(74880);
   Serial.println("Into Setup");
   Serial.println("Initialising pins..."); 
+  Serial.println("Mac:" + macAddress);
+  delay(5000);
 
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
@@ -89,6 +104,8 @@ void setup() {
     for(;;); // Don't proceed, loop forever
   }
 
+  dht.setup(TEMP_HUMID_SENSOR, DHTesp::DHT11);
+  
   // Show initial display buffer contents on the screen --
   // the library initializes this with an Adafruit splash screen.
   display.display();
@@ -98,9 +115,6 @@ void setup() {
   // Clear the buffer
   display.clearDisplay();
 
-
-  
-  
  
   pinMode(MULTIPLEXER_LOW_BIT, OUTPUT);
   pinMode(MULTIPLEXER_HIGH_BIT, OUTPUT);
@@ -109,11 +123,15 @@ void setup() {
   pinMode(SOLENOID_3, OUTPUT);
   pinMode(FANS, OUTPUT);
   pinMode(HP_PUMP, OUTPUT);
-  pinMode(TEMP_HUMID_SENSOR,INPUT);
-   
+  pinMode(LP_PUMP, OUTPUT);
+  pinMode(TEMP_HUMID_SENSOR,INPUT_PULLDOWN_16);
+
+  digitalWrite(LP_PUMP, LOW);
+  digitalWrite(SOLENOID_1, LOW);
   
   log("ESP8266 Farm Client 3");
-  delay(2000);
+  log("v1.1");
+  //delay(2000);
   Serial.printf("Connecting to %s ", ssid);
   log("Connecting to " + String(ssid));
   //WiFi.begin(ssid, password);
@@ -126,7 +144,51 @@ void setup() {
 
   macAddress=WiFi.macAddress();
   log("Mac:" + macAddress);
-  delay(1000);
+  //delay(1000);
+
+  int str_len = deviceName.length() + 1; 
+ 
+  // Prepare the character array (the buffer) 
+  char char_array[str_len];
+   
+  // Copy it over 
+  deviceName.toCharArray(char_array, str_len);
+  ArduinoOTA.setHostname(char_array);
+   ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else { // U_FS
+      type = "filesystem";
+    }
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println("Start updating " + type);
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("End Failed");
+    }
+  });
+  ArduinoOTA.begin();
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
 }
 
 
@@ -138,13 +200,13 @@ void loop() {
   Serial.println("======================================================================================");
   Serial.println("");
   Serial.println("Version Date: 2020-05-03");
+  ArduinoOTA.handle();
+  
   //EnsureWifi();
   
-  //PostSensorData();    
-
+  PostSensorData();    
   GetTasks();
-
-  //Wait();
+  Wait();
   
 }
 
@@ -166,12 +228,15 @@ void Wait()
 
 void PostSensorData()
 {
+  ArduinoOTA.handle();
     log("Post sensor data...");
     PostMoistureData();
     PostLightData();
     //PostTemperatureAndHumidityData();
+  //  readTempAndHumidity();
   //PostSensorPowerData();
   //PostFarmBatteryPowerData();
+  //ReadDHT11();
 }
 
 void EnsureWifi()
@@ -206,6 +271,9 @@ void EnsureWifi()
   retry = 1;
   while (WiFi.status() != WL_CONNECTED && retry<maxRetry)
   {
+    WiFi.hostname(deviceName);
+    WiFi.mode(WIFI_STA);
+    //WiFi.config(staticIP, subnet, gateway, dns);
     WiFi.begin(ssid, password);
     delay(500);
     Serial.println("Connection attempt " + String(retry));
@@ -217,6 +285,7 @@ void EnsureWifi()
   if (WiFi.status() == WL_CONNECTED)
   {
     log("Connected !!");
+    Serial.println(WiFi.localIP());
   }
   else
   {
@@ -226,45 +295,51 @@ void EnsureWifi()
 }
 
 
-void PostTemperatureAndHumidityData()
-{
-  Serial.println("");
-    Serial.println("---------------------------------------------------");
-        Serial.println("Into PostTemperateAndHumidityData");
-        String TEMPERATURE = String("D92D1AD6-416D-4E12-9D62-E50F3FE176D7");
-        String HUMIDITY = String("CBD9A0A7-5347-4583-B5FA-054BA8E9D448");
-        byte temperature = 0;
-        byte humidity = 0;
-        delay(2000);
-        int err = SimpleDHTErrSuccess;
-        if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
-          log("Failed Temp/Humidity");
-          Serial.print("Read DHT11 failed, err="); Serial.println(err);delay(1000);
-          return;
-        }
-  
-        Serial.print("Sample OK: ");
-        Serial.print((int)temperature); Serial.print(" *C, "); 
-        Serial.print((int)humidity); Serial.println(" H");
-        Serial.println("currentTemperature:" + String(temperature));
-        log("Temp : "  + String(temperature));
-        PostData(TEMPERATURE, (int)temperature);
-        Serial.println("currentHumidity:" + String(humidity));
-        log("Humidity : " + String(humidity));
-        PostData(HUMIDITY, (int)humidity);
-        
-        Serial.println("---------------------------------------------------");
-  Serial.println("");
-}
+//void PostTemperatureAndHumidityData()
+//{
+//  Serial.println("");
+//    Serial.println("---------------------------------------------------");
+//        Serial.println("Into PostTemperateAndHumidityData");
+//        log("Check Temp/Humidity");
+//        //String TEMPERATURE = String("D92D1AD6-416D-4E12-9D62-E50F3FE176D7");
+//        //String HUMIDITY = String("CBD9A0A7-5347-4583-B5FA-054BA8E9D448");
+//        byte temperature = 0;
+//        byte humidity = 0;
+//        delay(2000);
+//        int err = SimpleDHTErrSuccess;
+//        log("About to read..");
+//        delay(1000);
+//        if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
+//          log("Failed Temp/Humidity");
+//          Serial.print("Read DHT11 failed, err="); Serial.println(err);delay(1000);
+//          return;
+//        }
+//        log("Check OK");
+//        Serial.print("Sample OK: ");
+//        Serial.print((int)temperature); Serial.print(" *C, "); 
+//        Serial.print((int)humidity); Serial.println(" H");
+//        Serial.println("currentTemperature:" + String(temperature));
+//        log("Temp : "  + String(temperature));
+//        PostData("D92D1AD6-416D-4E12-9D62-E50F3FE176D7", (int)temperature);
+//        Serial.println("currentHumidity:" + String(humidity));
+//        log("Humidity : " + String(humidity));
+//        PostData("CBD9A0A7-5347-4583-B5FA-054BA8E9D448", (int)humidity);
+//        
+//        Serial.println("---------------------------------------------------");
+//  Serial.println("");
+//}
 
 //void readTempAndHumidity()
 //{
 //   // Wait a few seconds between measurements.
 //  delay(2000);
-//
+// log("Read T&H");
+// 
 //  // Reading temperature or humidity takes about 250 milliseconds!
 //  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+//  log("Reading humidity");
 //  float h = dht.readHumidity();
+//  log("Reading temperature");
 //  // Read temperature as Celsius (the default)
 //  float t = dht.readTemperature();
 //  // Read temperature as Fahrenheit (isFahrenheit = true)
@@ -272,7 +347,8 @@ void PostTemperatureAndHumidityData()
 //
 //  // Check if any reads failed and exit early (to try again).
 //  if (isnan(h) || isnan(t) || isnan(f)) {
-//    Serial.println(F("Failed to read from DHT sensor!"));
+//    Serial.println(F("Failed to read DHT"));
+//    log("Failed to read DHT");
 //    return;
 //  }
 //
@@ -291,6 +367,7 @@ void PostTemperatureAndHumidityData()
 //  delay(2000);
 //  Serial.print(F("Humidity: "));
 //  Serial.print(h);
+//  log("Humidity:" + String(h));
 //  Serial.print(F("%  Temperature: "));
 //  Serial.print(t);
 //  Serial.print(F("°C "));
@@ -302,17 +379,28 @@ void PostTemperatureAndHumidityData()
 //  Serial.println(F("°F"));
 //}
 
+void ReadDHT11()
+{
+    delay(dht.getMinimumSamplingPeriod());
+
+  float humidity = dht.getHumidity();
+  float temperature = dht.getTemperature();
+  log(dht.getStatusString());
+}
+
+
 void PostMoistureData()
 {
+  ArduinoOTA.handle();
   Serial.println("");
     Serial.println("---------------------------------------------------");
    Serial.println("Into PostMoistureData");
    log("Checking moisture");
    String MOISTURE =  String("72CFAC9D-B72A-4683-99C2-6FABA4A8A650");
-   delay(2000);
+   delay(200);
    digitalWrite(MULTIPLEXER_LOW_BIT, 0);
    digitalWrite(MULTIPLEXER_HIGH_BIT,0);
-   delay(2000);
+   delay(200);
    int currentMoisture = analogRead(COMMON_ADC);
    Serial.println("Moisture : " + String(currentMoisture));
    log("Moisture : " + String(currentMoisture));
@@ -358,6 +446,7 @@ void PostFarmBatteryPowerData()
 
 void PostLightData()
 {
+  ArduinoOTA.handle();
     Serial.println("");
     Serial.println("---------------------------------------------------");
    Serial.println("Into PostLightData");
@@ -365,7 +454,7 @@ void PostLightData()
    const String LIGHT = String("6BDB843C-8015-4150-B69E-B0EE73479C3B");
    digitalWrite(MULTIPLEXER_LOW_BIT, 1);
    digitalWrite(MULTIPLEXER_HIGH_BIT,0);
-   delay(2000);
+   delay(200);
    int currentLight= analogRead(COMMON_ADC);
    Serial.println("Light : " + String(currentLight));
    log("Light:" + String(currentLight));
@@ -660,7 +749,7 @@ void ProcessTask(JsonObject& task)
   Serial.println("Param:" + duration);
   String description = task["taskDescription"];
   Serial.println("Description:" + description);
-  log("Task: "   + description);
+  //log("Task: "   + description);
 
 
   const int OpenMistingSolenoid = 0;
@@ -710,6 +799,11 @@ void ProcessTask(JsonObject& task)
       WriteLog("ESP32", "Opening Solenoid 3");
       pinHigh(SOLENOID_3);
       break;
+
+    case LowPressurePump:
+       WriteLog("ESP32", "Turning LPP On");
+      pinHigh(LP_PUMP);
+      break;
       
     
   }
@@ -750,7 +844,11 @@ void ProcessTask(JsonObject& task)
         pinLow(FANS);
         break;
 
-      
+      case LowPressurePump:
+        WriteLog("ESP8266", "Stopping LPP");
+        log("Stopping LP Pump");
+        pinLow(LP_PUMP);
+        break;
     }
   }
   
