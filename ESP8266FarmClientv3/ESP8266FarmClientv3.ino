@@ -468,15 +468,17 @@ int GetPollingInterval()
   Serial.println("");
   Serial.println("---------------------------------------------------");
   Serial.println("Into GetPollingInterval");
+  //configuration/getconfigvalue?configValueName=pollinginterval&microControllerId=38%3A2B%3A78%3A03%3A85%3A03
   log("Get polling interval");
   const char* host="griefffarmmanager.azurewebsites.net";
-  const char* url = "/home/getconfigvalue?configValueName=pollinginterval";
+  const char* url = "/configuration/getconfigvalue?configValueName=pollinginterval&microControllerId=";
 
   Serial.printf("\n[Connecting to %s ... ", host);
   if (client.connect(host, 80))
   {
     Serial.println("Connected for polling interval");
-    String fullRequest = String("GET ") + url + " HTTP/1.1\r\n" +  "Host: " + host + "\r\n" +  "Connection: close\r\n\r\n";
+    Serial.println("REVISED CONFIG CALL");
+    String fullRequest = String("GET ") + url + urlencode(macAddress) + " HTTP/1.1\r\n" +  "Host: " + host + "\r\n" +  "Connection: close\r\n\r\n";
     Serial.println(fullRequest);
     client.print(fullRequest);
 
