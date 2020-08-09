@@ -22,7 +22,7 @@
 //Green - Humidity/Temp Sensor
 
 
-//#include <SimpleDHT.h>
+#include <SimpleDHT.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
@@ -59,7 +59,7 @@
 
 
 /** Initialize DHT sensor */
-DHTesp dht;
+//DHTesp dht;
 /** Task handle for the light value read task */
 //TaskHandle_t tempTaskHandle = NULL;
 /** Pin number for DHT11 data pin */
@@ -88,7 +88,8 @@ String macAddress=WiFi.macAddress();
 unsigned long startTime = millis();
 
   String deviceName = macAddress=="38:2B:78:03:85:03"?"Test ESP8266":"Live ESP8266";
-
+int pinDHT11 = 16;
+SimpleDHT11 dht11(pinDHT11);
 
 void setup() {
   
@@ -104,7 +105,7 @@ void setup() {
     for(;;); // Don't proceed, loop forever
   }
 
-  dht.setup(TEMP_HUMID_SENSOR, DHTesp::DHT11);
+  //dht.setup(TEMP_HUMID_SENSOR, DHTesp::DHT11);
   
   // Show initial display buffer contents on the screen --
   // the library initializes this with an Adafruit splash screen.
@@ -202,7 +203,7 @@ void loop() {
   Serial.println("Version Date: 2020-05-03");
   ArduinoOTA.handle();
   
-  //EnsureWifi();
+  EnsureWifi();
   
   PostSensorData();    
   GetTasks();
@@ -230,10 +231,10 @@ void PostSensorData()
 {
   ArduinoOTA.handle();
     log("Post sensor data...");
-    PostMoistureData();
+    //PostMoistureData();
     PostLightData();
-    //PostTemperatureAndHumidityData();
-  //  readTempAndHumidity();
+    PostTemperatureAndHumidityData();
+    //readTempAndHumidity();
   //PostSensorPowerData();
   //PostFarmBatteryPowerData();
   //ReadDHT11();
@@ -295,39 +296,39 @@ void EnsureWifi()
 }
 
 
-//void PostTemperatureAndHumidityData()
-//{
-//  Serial.println("");
-//    Serial.println("---------------------------------------------------");
-//        Serial.println("Into PostTemperateAndHumidityData");
-//        log("Check Temp/Humidity");
-//        //String TEMPERATURE = String("D92D1AD6-416D-4E12-9D62-E50F3FE176D7");
-//        //String HUMIDITY = String("CBD9A0A7-5347-4583-B5FA-054BA8E9D448");
-//        byte temperature = 0;
-//        byte humidity = 0;
-//        delay(2000);
-//        int err = SimpleDHTErrSuccess;
-//        log("About to read..");
-//        delay(1000);
-//        if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
-//          log("Failed Temp/Humidity");
-//          Serial.print("Read DHT11 failed, err="); Serial.println(err);delay(1000);
-//          return;
-//        }
-//        log("Check OK");
-//        Serial.print("Sample OK: ");
-//        Serial.print((int)temperature); Serial.print(" *C, "); 
-//        Serial.print((int)humidity); Serial.println(" H");
-//        Serial.println("currentTemperature:" + String(temperature));
-//        log("Temp : "  + String(temperature));
-//        PostData("D92D1AD6-416D-4E12-9D62-E50F3FE176D7", (int)temperature);
-//        Serial.println("currentHumidity:" + String(humidity));
-//        log("Humidity : " + String(humidity));
-//        PostData("CBD9A0A7-5347-4583-B5FA-054BA8E9D448", (int)humidity);
-//        
-//        Serial.println("---------------------------------------------------");
-//  Serial.println("");
-//}
+void PostTemperatureAndHumidityData()
+{
+  Serial.println("");
+    Serial.println("---------------------------------------------------");
+        Serial.println("Into PostTemperateAndHumidityData");
+        log("Check Temp/Humidity");
+        //String TEMPERATURE = String("D92D1AD6-416D-4E12-9D62-E50F3FE176D7");
+        //String HUMIDITY = String("CBD9A0A7-5347-4583-B5FA-054BA8E9D448");
+        byte temperature = 0;
+        byte humidity = 0;
+        delay(2000);
+        int err = SimpleDHTErrSuccess;
+        log("About to read..");
+        delay(1000);
+        if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
+          log("Failed Temp/Humidity");
+          Serial.print("Read DHT11 failed, err="); Serial.println(err);delay(1000);
+          return;
+        }
+        log("Check OK");
+        Serial.print("Sample OK: ");
+        Serial.print((int)temperature); Serial.print(" *C, "); 
+        Serial.print((int)humidity); Serial.println(" H");
+        Serial.println("currentTemperature:" + String(temperature));
+        log("Temp : "  + String(temperature));
+        PostData("D92D1AD6-416D-4E12-9D62-E50F3FE176D7", (int)temperature);
+        Serial.println("currentHumidity:" + String(humidity));
+        log("Humidity : " + String(humidity));
+        PostData("CBD9A0A7-5347-4583-B5FA-054BA8E9D448", (int)humidity);
+        
+        Serial.println("---------------------------------------------------");
+  Serial.println("");
+}
 
 //void readTempAndHumidity()
 //{
@@ -378,15 +379,15 @@ void EnsureWifi()
 //  Serial.print(hif);
 //  Serial.println(F("°F"));
 //}
-
-void ReadDHT11()
-{
-    delay(dht.getMinimumSamplingPeriod());
-
-  float humidity = dht.getHumidity();
-  float temperature = dht.getTemperature();
-  log(dht.getStatusString());
-}
+//
+//void ReadDHT11()
+//{
+//    delay(dht.getMinimumSamplingPeriod());
+//
+//  float humidity = dht.getHumidity();
+//  float temperature = dht.getTemperature();
+//  log(dht.getStatusString());
+//}
 
 
 void PostMoistureData()
@@ -456,9 +457,10 @@ void PostLightData()
    digitalWrite(MULTIPLEXER_HIGH_BIT,0);
    delay(200);
    int currentLight= analogRead(COMMON_ADC);
-   Serial.println("Light : " + String(currentLight));
-   log("Light:" + String(currentLight));
-   PostData(LIGHT, 1000-currentLight);
+   int parsedLight = (1000 - ((1024-currentLight)*2));
+   Serial.println("Light : " + String(parsedLight));
+   log("Light:" + String(parsedLight));
+   PostData(LIGHT, parsedLight);
   Serial.println("---------------------------------------------------");
   Serial.println("");
 }
